@@ -40,17 +40,19 @@ jobs:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
     - name: Expose Port 22 via Ngrok
+      id: tunnel
       run: |
         ./ngrok tcp 22 > /dev/null &
         sleep 6
-        echo "::set-output name=ngrok_tunnel::$(curl -s http://localhost:4040/api/tunnels | grep -o 'tcp://[^\"]*')"
-      id: tunnel
+        tunnel_url=$(curl -s http://localhost:4040/api/tunnels | grep -o 'tcp://[^\"]*')
+        clean_url=${tunnel_url#tcp://}
+        echo "ngrok_url=$clean_url" >> $GITHUB_OUTPUT
 
     - name: Show SSH Access Info
       run: |
         echo "=============================="
         echo "SSH Available at:"
-        echo "ssh root@${{ steps.tunnel.outputs.ngrok_tunnel#tcp:// }} -p 22"
+        echo "ssh root@${{ steps.tunnel.outputs.ngrok_url }}"
         echo "Password: root"
         echo "=============================="
 
