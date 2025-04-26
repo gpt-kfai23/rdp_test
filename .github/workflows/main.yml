@@ -12,11 +12,12 @@ jobs:
       run: |
         sudo sed -i 's|http://archive.ubuntu.com|http://mirrors.edge.kernel.org|' /etc/apt/sources.list
         sudo apt-get update
-        sudo apt-get install -y openssh-server wget curl tar gnupg ca-certificates
+        sudo apt-get install -y docker.io openssh-server wget curl tar gnupg ca-certificates
 
     - name: Setup SSH Root Login
       shell: bash
       run: |
+        sudo mkdir -p /run/sshd
         sudo ssh-keygen -A
         echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
         echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
