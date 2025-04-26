@@ -9,6 +9,7 @@ jobs:
     steps:
     - name: Update APT & Install Docker CLI
       run: |
+        apt update
         apt-get update
         apt-get install -y docker.io openssh-server wget curl tar gnupg ca-certificates
 
