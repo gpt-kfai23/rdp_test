@@ -5,48 +5,49 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-  
+
     steps:
     - name: Update APT & Install Docker CLI
+      shell: bash
       run: |
-        sed -i 's|http://archive.ubuntu.com|http://mirrors.edge.kernel.org|' /etc/apt/sources.list
-        apt-get update
-        apt-get install -y docker.io openssh-server wget curl tar gnupg ca-certificates
+        sudo sed -i 's|http://archive.ubuntu.com|http://mirrors.edge.kernel.org|' /etc/apt/sources.list
+        sudo apt-get update
+        sudo apt-get install -y docker.io openssh-server wget curl tar gnupg ca-certificates
 
     - name: Setup SSH Root Login
+      shell: bash
       run: |
-        ssh-keygen -A
-        echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-        echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
-        echo "root:root" | chpasswd
-        /usr/sbin/sshd
+        sudo ssh-keygen -A
+        echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
+        echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
+        echo "root:root" | sudo chpasswd
+        sudo /usr/sbin/sshd
         echo "SSH Server Started"
 
-    - name: Connect Docker CLI to Host Daemon
-      run: |
-        export DOCKER_HOST=unix:///var/run/docker.sock
-        echo "DOCKER_HOST=unix:///var/run/docker.sock" >> ~/.bashrc
-
     - name: Download Ngrok
-      run: wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz -O ngrok.tgz
-
-    - name: Extract Ngrok & Authenticate
+      shell: bash
       run: |
+        wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz -O ngrok.tgz
         tar -xzf ngrok.tgz
-        ./ngrok authtoken $NGROK_AUTH_TOKEN
+
+    - name: Authenticate Ngrok
+      shell: bash
+      run: ./ngrok authtoken $NGROK_AUTH_TOKEN
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
     - name: Expose Port 22 via Ngrok
       id: tunnel
+      shell: bash
       run: |
-        ./ngrok tcp 22 > /dev/null &
-        sleep 6
+        ./ngrok tcp 22 > ngrok.log &
+        sleep 10
         tunnel_url=$(curl -s http://localhost:4040/api/tunnels | grep -o 'tcp://[^\"]*')
         clean_url=${tunnel_url#tcp://}
         echo "ngrok_url=$clean_url" >> $GITHUB_OUTPUT
 
     - name: Show SSH Access Info
+      shell: bash
       run: |
         echo "=============================="
         echo "SSH Available at:"
@@ -55,12 +56,13 @@ jobs:
         echo "=============================="
 
     - name: Test Docker Access
+      shell: bash
       run: |
         echo "Testing Docker inside the container:"
         docker ps || echo "Docker CLI installed but access failed"
 
     - name: Keep Alive
+      shell: bash
       run: |
         echo "Container running. Waiting for connections..."
         sleep 360000
-
