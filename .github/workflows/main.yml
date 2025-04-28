@@ -1,69 +1,89 @@
-name: Kangwifios CI (Container-based)
+name: CI
 
 on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    container:
+      image: kalilinux/kali-rolling:latest
+      options: --privileged --volume /sys/fs/cgroup:/sys/fs/cgroup:ro
+      
     steps:
-    - name: Update APT & Install Docker CLI
-      shell: bash
+    - name: Install Core Dependencies
       run: |
-        sudo sed -i 's|http://archive.ubuntu.com|http://mirrors.edge.kernel.org|' /etc/apt/sources.list
-        sudo apt-get update
-        sudo apt-get install -y openssh-server wget curl tar sudo gnupg ca-certificates
-
-    - name: Setup SSH Root Login
-      shell: bash
+        apt-get update
+        apt-get install -y sudo wget tar curl gnupg apt-transport-https ca-certificates
+        
+    - name: Install Development Tools
       run: |
-        sudo mkdir -p /run/sshd
-        sudo ssh-keygen -A
-        echo "PermitRootLogin yes" | sudo tee -a /etc/ssh/sshd_config
-        echo "PasswordAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
-        echo "root:root" | sudo chpasswd
-        sudo /usr/sbin/sshd
-        echo "SSH Server Started"
+        # Python
+        apt-get install -y python3 python3-pip python3-dev
+        # Node.js
+        apt-get install -y golang
 
-    - name: Download Ngrok
-      shell: bash
+    - name: Install Kali Linux Security Tools
       run: |
-        wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz -O ngrok.tgz
-        tar -xzf ngrok.tgz
-
-    - name: Authenticate Ngrok
-      shell: bash
+        apt-get install -y nmap metasploit-framework hydra burpsuite john wireshark nikto aircrack-ng gobuster
+   
+    - name: Download ngrok
+      run: wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz -O ngrok.tgz
+    
+    - name: Extract ngrok
+      run: tar -xzf ngrok.tgz
+    
+    - name: Auth ngrok
       run: ./ngrok authtoken $NGROK_AUTH_TOKEN
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Expose Port 22 via Ngrok
-      id: tunnel
-      shell: bash
+    - name: Install Ollama
       run: |
-        ./ngrok tcp 22 > ngrok.log &
-        sleep 10
-        tunnel_url=$(curl -s http://localhost:4040/api/tunnels | grep -o 'tcp://[^\"]*')
-        clean_url=${tunnel_url#tcp://}
-        echo "ngrok_url=$clean_url" >> $GITHUB_OUTPUT
+        curl -fsSL https://ollama.com/install.sh | sh  # Instalasi Ollama menggunakan curl
 
-    - name: Show SSH Access Info
-      shell: bash
+    - name: Install Podman and Docker CLI
       run: |
-        echo "=============================="
-        echo "SSH Available at:"
-        echo "ssh root@${{ steps.tunnel.outputs.ngrok_url }}"
-        echo "Password: root"
-        echo "=============================="
+        apt-get install -y podman docker.io  # Instalasi Podman dan Docker CLI
+    - name: Verify Podman and Docker CLI Installation
+      run: |
+        podman --version
+        docker --version
+        
+    - name: Connect Docker CLI to Host Daemon
+      run: |
+        export DOCKER_HOST=unix:///var/run/docker.sock
+        echo "DOCKER_HOST=unix:///var/run/docker.sock" >> ~/.bashrc
 
-    - name: Test Docker Access
-      shell: bash
+    - name: Setup SSH
       run: |
-        echo "Testing Docker inside the container:"
-        docker ps || echo "Docker CLI installed but access failed"
+        apt-get install -y openssh-server
+        # Generate SSH host keys
+        ssh-keygen -A
+        # Configure SSH
+        echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+        echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config  # Pastikan autentikasi password diizinkan
+        # Set password root dengan cara yang lebih eksplisit
+        echo "root:1234" | chpasswd
+        # Verifikasi password di-set
+        grep root /etc/shadow
+        # Start SSH daemon
+        /usr/sbin/sshd -D &
+    
+    - name: Check SSH Status
+      run: |
+        sleep 5  # Tunggu sebentar agar sshd mulai
+        ps aux | grep sshd || echo "SSHD not running"
+        netstat -tuln | grep 22 || echo "Port 22 not open"
+    
+    - name: Create Tunnel
+      run: |
+        ./ngrok tcp 22 &  # Jalankan ngrok di background
+        sleep 5  # Tunggu ngrok mulai
+        # Tampilkan URL tunnel
+        curl -s http://localhost:4040/api/tunnels | grep -o "tcp://[^\"]*"
 
     - name: Keep Alive
-      shell: bash
       run: |
-        echo "Container running. Waiting for connections..."
-        sleep 360000
+        echo "SSH tunnel is running. Connect using the ngrok URL above."
+        ollama serve
+        sleep 360000  # Jaga tunnel hidup selama 1 jam
